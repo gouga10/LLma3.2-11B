@@ -71,9 +71,9 @@ model.print_trainable_parameters()
 
 
 import json
-with open('llama_stuff/image_paths.json','r')as f:
+with open('llama_stuff/Finetuning_images.json','r')as f:
     image_paths=json.load(f)
-with open('llama_stuff/answers.json','r')as f:
+with open('llama_stuff/Finetuning_captions.json','r')as f:
     answers=json.load(f)
 with open('llama_stuff/templates.json','r')as f:
     prompts=json.load(f)
@@ -157,7 +157,7 @@ def collate_fn(batch):
     return processed_inputs, stacked_labels
 
 # Dataset and DataLoader setup
-dataset = CustomDataset(prompts[:100], answers[:100], image_paths[:100], processor, tokenizer)
+dataset = CustomDataset(prompts, answers, image_paths, processor, tokenizer)
 data_loader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=collate_fn)
 
 
@@ -193,7 +193,7 @@ model.train()
 
 
           
-
+counter=0
 model.train()
 optimizer.zero_grad()
 for epoch in range(num_epochs):
@@ -223,9 +223,34 @@ for epoch in range(num_epochs):
             progress_bar.update(1)
             del marco
             del batch_labels 
-
+            counter+=1
+            print(f'counter  : {counter}/{num_epochs*len(data_loader)}')
+            if counter == len(data_loader)//(ddp_world_size):
             
+                if master_process:
+                    save_path = "lora_checkpoint_1epoch"
+                    if isinstance(model, torch.nn.parallel.DistributedDataParallel):
+                        raw_model = model.module
+                    else:
+                        raw_model = model
 
+                    # Save only the LoRA parameters
+                    print(f'gpu {ddp_local_rank} saved lora checkpoint 1 epoch')
+                    raw_model.save_pretrained(save_path)
+
+            if counter == 2*len(data_loader)//(ddp_world_size):
+            
+                if master_process:
+                    save_path = "lora_checkpoint_2epoch"
+                    if isinstance(model, torch.nn.parallel.DistributedDataParallel):
+                        raw_model = model.module
+                    else:
+                        raw_model = model
+
+                    # Save only the LoRA parameters
+                    print(f'gpu {ddp_local_rank} saved lora checkpoint 2 epochs')
+                    raw_model.save_pretrained(save_path)
+            
 
             # if master_process:
             #     print(f"device : {device}   | loss: {loss.item():.6f}  | epoch {epoch}/{num_epochs} |  batch : {batch_idx}")
@@ -251,3 +276,4 @@ if ddp:
     destroy_process_group()
     torch.cuda.empty_cache() 
     print(f'gpu {ddp_local_rank} exited')
+
